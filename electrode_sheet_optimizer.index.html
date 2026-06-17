@@ -1,0 +1,694 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Electrode Sheet Optimizer — Ionomr</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f4f4f2;color:#1a1a1a;font-size:14px;line-height:1.5}
+.app{max-width:960px;margin:0 auto;padding:20px 16px}
+h1{font-size:19px;font-weight:600;margin-bottom:2px}
+.subtitle{font-size:12px;color:#777;margin-bottom:16px}
+.tab-bar{display:flex;align-items:flex-end;border-bottom:1px solid #ddd;margin-bottom:16px;position:relative}
+.tab-scroll-btn{flex-shrink:0;width:28px;height:34px;display:flex;align-items:center;justify-content:center;background:#fff;border:1px solid #ddd;border-bottom:1px solid #fff;cursor:pointer;font-size:12px;color:#888;user-select:none;margin-bottom:-1px;z-index:2}
+.tab-scroll-btn:hover{background:#f5f5f3;color:#333}
+.tab-scroll-btn.hidden{visibility:hidden;pointer-events:none}
+.tab-scroll-left{border-radius:7px 0 0 0;border-right:none}
+.tab-scroll-right{border-radius:0 7px 0 0;border-left:none}
+.tab-strip{display:flex;align-items:flex-end;gap:0;overflow:hidden;flex:1;position:relative}
+.tab-strip-inner{display:flex;align-items:flex-end;gap:0;transition:transform .2s ease}
+.tab{padding:8px 14px;font-size:13px;cursor:pointer;border:1px solid transparent;border-bottom:none;border-radius:7px 7px 0 0;color:#666;white-space:nowrap;background:transparent;font-family:inherit;flex-shrink:0}
+.tab:hover{background:#f0f0ee;color:#333}
+.tab.active{background:#fff;border-color:#ddd;color:#1a1a1a;font-weight:500;margin-bottom:-1px;z-index:1}
+.tab-add{padding:7px 12px;font-size:18px;cursor:pointer;color:#aaa;border:1px solid transparent;border-bottom:none;background:transparent;line-height:1;font-family:inherit;flex-shrink:0;margin-bottom:0}
+.tab-add:hover{color:#555}
+.tab-close{margin-left:6px;font-size:11px;color:#ccc;cursor:pointer;padding:1px 3px;border-radius:3px}
+.tab-close:hover{color:#e53e3e;background:#fee}
+.card{background:#fff;border:1px solid #e5e5e3;border-radius:10px;padding:14px 18px;margin-bottom:12px}
+.card-title{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.07em;color:#999;margin-bottom:10px;display:flex;justify-content:space-between;align-items:center}
+.sheet-name-input{max-width:200px;padding:7px 10px;font-size:14px;font-weight:500;border:1px solid #ddd;border-radius:7px;background:#fff;color:#1a1a1a;width:100%}
+.lot-input{max-width:140px;padding:7px 10px;font-size:14px;border:1px solid #ddd;border-radius:7px;background:#fff;color:#1a1a1a;width:100%}
+.lot-input:focus,.sheet-name-input:focus{outline:none;border-color:#888}
+.name-row{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:12px}
+.field-row{display:flex;align-items:center;gap:10px;margin-bottom:8px;flex-wrap:wrap}
+.field-label{font-size:13px;color:#444;min-width:72px}
+input[type=number]{width:82px;padding:6px 8px;font-size:13px;border:1px solid #ddd;border-radius:6px;background:#fff;color:#1a1a1a;-moz-appearance:textfield}
+input[type=number]::-webkit-outer-spin-button,input[type=number]::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
+input[type=number]:focus{outline:none;border-color:#666}
+.hint{font-size:12px;color:#aaa}
+.presets{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}
+.preset{padding:4px 10px;border:1px solid #ddd;border-radius:5px;font-size:12px;cursor:pointer;background:#fafaf8;color:#555;user-select:none}
+.preset:hover{background:#f0f0ee;border-color:#bbb}
+.die-row{display:grid;grid-template-columns:20px 88px 1fr auto;align-items:center;gap:10px;padding:9px 11px;border:1px solid #e8e8e6;border-radius:7px;background:#fafaf8;margin-bottom:5px}
+.die-label{font-size:13px;font-weight:600;display:flex;align-items:center;gap:5px}
+.die-info{font-size:11px;color:#999;line-height:1.5}
+.die-min{display:flex;align-items:center;gap:6px;font-size:12px;color:#666;white-space:nowrap}
+.die-min input{width:52px}
+.swatch{width:11px;height:11px;border-radius:2px;flex-shrink:0;display:inline-block;vertical-align:middle}
+.btn-row{display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap;align-items:center}
+button{padding:7px 15px;border-radius:7px;font-size:13px;cursor:pointer;font-family:inherit;font-weight:500;transition:opacity .12s;white-space:nowrap}
+.btn-calc{background:#1a1a1a;color:#fff;border:none}
+.btn-calc:hover{opacity:.82}
+.btn-sec{background:#fff;color:#1a1a1a;border:1px solid #ccc}
+.btn-sec:hover{background:#f5f5f3}
+.btn-fill{background:#e8f4ed;color:#1a6b3c;border:1px solid #b5dcc5;font-weight:500}
+.btn-fill:hover{background:#d5ecdd}
+.btn-exp{background:#fff;color:#555;border:1px solid #ddd;font-size:12px;padding:5px 10px;font-weight:400}
+.btn-exp:hover{background:#f5f5f3}
+.global-actions{display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap;padding:10px 14px;background:#fff;border:1px solid #e5e5e3;border-radius:10px;align-items:center}
+.global-label{font-size:12px;color:#888;margin-right:2px}
+.results-area{display:none}
+.metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(96px,1fr));gap:8px;margin-bottom:12px}
+.metric{background:#fafaf8;border:1px solid #e8e8e6;border-radius:8px;padding:10px 12px}
+.metric-label{font-size:11px;color:#999;margin-bottom:2px}
+.metric-value{font-size:22px;font-weight:600;line-height:1.1}
+.metric-sub{font-size:11px;color:#aaa;margin-top:1px}
+.warn{font-size:13px;color:#92400e;background:#fef3c7;border:1px solid #fde68a;border-radius:7px;padding:8px 12px;margin-bottom:10px}
+canvas{display:block;border-radius:6px;border:1px solid #e5e5e3}
+.canvas-wrap{padding:12px;background:#f9f9f7;border-radius:8px;border:1px solid #ebebea;overflow:hidden;display:flex;flex-direction:column;align-items:center}
+.canvas-inner{overflow-x:auto;overflow-y:hidden;-webkit-overflow-scrolling:touch;width:100%;display:flex;justify-content:center}
+.canvas-inner canvas{min-width:0;max-width:none}
+.canvas-slider-row{display:flex;align-items:center;gap:8px;margin-top:10px;padding-top:8px;border-top:1px solid #eee}
+.canvas-slider-label{font-size:11px;color:#aaa;flex-shrink:0}
+.canvas-slider-row input[type=range]{flex:1;height:4px;accent-color:#555;cursor:pointer}
+.canvas-slider-pct{font-size:11px;color:#aaa;min-width:34px;text-align:right;flex-shrink:0}
+.legend{display:flex;flex-wrap:wrap;gap:10px;margin-top:8px}
+.legend-item{display:flex;align-items:center;gap:5px;font-size:12px;color:#666}
+.legend-dot{width:11px;height:11px;border-radius:3px;flex-shrink:0}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th{text-align:left;padding:6px 9px;color:#999;font-weight:500;border-bottom:1px solid #eee;font-size:11px;text-transform:uppercase;letter-spacing:.04em}
+td{padding:6px 9px;border-bottom:1px solid #f0f0ee;vertical-align:middle}
+tr:last-child td{border-bottom:none}
+.tag{display:inline-block;font-size:10px;padding:1px 5px;border-radius:3px;background:#f0f0ee;color:#999;margin-left:3px;vertical-align:middle}
+</style>
+</head>
+<body>
+<div class="app">
+  <h1>Electrode Sheet Optimizer</h1>
+  <p class="subtitle">4 mm edge margin · 5 mm zone gap · no partial electrodes · dimensions in cm</p>
+  <div class="global-actions">
+    <span class="global-label">Export all:</span>
+    <button class="btn-exp" onclick="exportAllPNG()">All layouts as ZIP</button>
+    <button class="btn-exp" onclick="exportCSV()">Export all as CSV</button>
+  </div>
+  <div class="tab-bar" id="tab-bar">
+    <button class="tab-scroll-btn tab-scroll-left hidden" id="tab-scroll-left" onclick="scrollTabs(-1)">&#8249;</button>
+    <div class="tab-strip" id="tab-strip">
+      <div class="tab-strip-inner" id="tab-strip-inner"></div>
+    </div>
+    <button class="tab-add" id="tab-add-btn" onclick="addSheet()" title="Add sheet">+</button>
+    <button class="tab-scroll-btn tab-scroll-right hidden" id="tab-scroll-right" onclick="scrollTabs(1)">&#8250;</button>
+  </div>
+  <div id="sheets-container"></div>
+</div>
+<script>
+const MARGIN=4,GAP=5;
+const DIES={
+  tp5:   {name:'TP5',   cols:4,rows:5,eW:17.10,eH:17.10,pitchX:22.10, pitchY:22.10, color:'#378ADD',light:'#c8e3f7',dark:'#185FA5'},
+  tp50v1:{name:'TP50v1',cols:1,rows:2,eW:70.47,eH:70.47,pitchX:70.47, pitchY:80.47, color:'#1D9E75',light:'#b8e8d6',dark:'#0F6E56'},
+  tp50v2:{name:'TP50v2',cols:2,rows:2,eW:54.89,eH:98.17,pitchX:59.89, pitchY:103.17,color:'#D85A30',light:'#f7d4c4',dark:'#993C1D'},
+  ct25:  {name:'CT25',  cols:3,rows:2,eW:39.75,eH:39.75,pitchX:49.75, pitchY:49.75, color:'#7F77DD',light:'#d8d5f5',dark:'#534AB7'},
+};
+Object.values(DIES).forEach(d=>{d.gridW=(d.cols-1)*d.pitchX+d.eW;d.gridH=(d.rows-1)*d.pitchY+d.eH;});
+const PRESETS={'A3':[42.0,29.7],'A4':[29.7,21.0],'A5':[21.0,14.85]};
+
+let sheets=[],activeId=null,sheetCounter=0;
+function newSheet(){const id=++sheetCounter;return{id,name:`Sheet ${id}`,lot:'',sw:30.0,sh:30.0,enabled:{tp5:true,tp50v1:true,tp50v2:true,ct25:true},mins:{tp5:0,tp50v1:0,tp50v2:0,ct25:0},zones:null,sw_mm:0,sh_mm:0};}
+function addSheet(){const s=newSheet();sheets.push(s);renderTabBar();activateSheet(s.id);}
+function removeSheet(id){if(sheets.length===1)return;sheets=sheets.filter(s=>s.id!==id);activateSheet(activeId===id?sheets[sheets.length-1].id:activeId);}
+function activateSheet(id){activeId=id;renderTabBar();renderActiveSheet();}
+
+function renderTabBar(){
+  const inner=document.getElementById('tab-strip-inner');
+  inner.innerHTML='';
+  sheets.forEach(s=>{
+    const tab=document.createElement('button');
+    tab.className='tab'+(s.id===activeId?' active':'');
+    tab.dataset.sheetId=s.id;
+    tab.innerHTML=`<span ondblclick="renameSheet(${s.id},event)">${esc(s.name)}</span>`
+      +(sheets.length>1?`<span class="tab-close" onclick="removeSheet(${s.id});event.stopPropagation()">✕</span>`:'');
+    tab.onclick=()=>activateSheet(s.id);
+    inner.appendChild(tab);
+  });
+  updateTabScroll();
+}
+
+let _tabScrollOffset=0;
+function updateTabScroll(){
+  const strip=document.getElementById('tab-strip');
+  const inner=document.getElementById('tab-strip-inner');
+  const btnL=document.getElementById('tab-scroll-left');
+  const btnR=document.getElementById('tab-scroll-right');
+  if(!strip||!inner||!btnL||!btnR)return;
+  const stripW=strip.offsetWidth;
+  const innerW=inner.scrollWidth;
+  const needsScroll=innerW>stripW;
+  btnL.classList.toggle('hidden',!needsScroll);
+  btnR.classList.toggle('hidden',!needsScroll);
+  if(!needsScroll){_tabScrollOffset=0;inner.style.transform='translateX(0)';return;}
+  // Clamp offset
+  const maxOffset=innerW-stripW;
+  _tabScrollOffset=Math.max(0,Math.min(_tabScrollOffset,maxOffset));
+  inner.style.transform=`translateX(-${_tabScrollOffset}px)`;
+  btnL.style.opacity=_tabScrollOffset>0?'1':'0.3';
+  btnR.style.opacity=_tabScrollOffset<maxOffset?'1':'0.3';
+  // Scroll active tab into view
+  const activeTab=inner.querySelector('.tab.active');
+  if(activeTab){
+    const tabLeft=activeTab.offsetLeft;
+    const tabRight=tabLeft+activeTab.offsetWidth;
+    if(tabLeft<_tabScrollOffset) _tabScrollOffset=tabLeft;
+    else if(tabRight>_tabScrollOffset+stripW) _tabScrollOffset=tabRight-stripW;
+    _tabScrollOffset=Math.max(0,Math.min(_tabScrollOffset,maxOffset));
+    inner.style.transform=`translateX(-${_tabScrollOffset}px)`;
+  }
+}
+
+function scrollTabs(dir){
+  const strip=document.getElementById('tab-strip');
+  const step=strip?strip.offsetWidth*0.6:120;
+  _tabScrollOffset+=dir*step;
+  updateTabScroll();
+}
+function renameSheet(id,e){e.stopPropagation();const s=sheets.find(x=>x.id===id);if(!s)return;const v=prompt('Rename sheet:',s.name);if(v&&v.trim()){s.name=v.trim();renderTabBar();const ni=document.getElementById(`sname-${id}`);if(ni)ni.value=s.name;}}
+function esc(s){return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+
+function renderActiveSheet(){
+  const c=document.getElementById('sheets-container');c.innerHTML='';
+  const s=sheets.find(x=>x.id===activeId);if(!s)return;
+  c.innerHTML=sheetHTML(s);
+  document.getElementById(`sw-${s.id}`).value=s.sw.toFixed(1);
+  document.getElementById(`sh-${s.id}`).value=s.sh.toFixed(1);
+  const lotEl=document.getElementById(`lot-${s.id}`);if(lotEl)lotEl.value=s.lot||'';
+  Object.keys(DIES).forEach(k=>{document.getElementById(`en-${k}-${s.id}`).checked=s.enabled[k];document.getElementById(`min-${k}-${s.id}`).value=s.mins[k];});
+  updateHint(s.id);
+  if(s.zones)renderResults(s);
+}
+
+function sheetHTML(s){
+  const dieRows=Object.entries(DIES).map(([k,d])=>`
+    <div class="die-row">
+      <input type="checkbox" id="en-${k}-${s.id}" onchange="syncSheet(${s.id})">
+      <span class="die-label"><span class="swatch" style="background:${d.color};border:1px solid ${d.dark}"></span>${d.name}</span>
+      <span class="die-info">${d.cols}×${d.rows} grid · ${d.cols*d.rows} elec/hit · electrode ${d.eW}×${d.eH} mm · full grid ${d.gridW.toFixed(1)}×${d.gridH.toFixed(1)} mm</span>
+      <div class="die-min">Min: <input type="number" id="min-${k}-${s.id}" value="0" min="0" max="9999" onchange="syncSheet(${s.id})"> elec</div>
+    </div>`).join('');
+  return`
+  <div class="name-row">
+    <div style="display:flex;flex-direction:column;gap:3px">
+      <label style="font-size:11px;color:#aaa;font-weight:500;text-transform:uppercase;letter-spacing:.05em">Sheet name</label>
+      <input class="sheet-name-input" id="sname-${s.id}" value="${esc(s.name)}" placeholder="Sheet name"
+        onchange="sheets.find(x=>x.id==${s.id}).name=this.value.trim()||'Sheet ${s.id}';renderTabBar()">
+    </div>
+    <div style="display:flex;flex-direction:column;gap:3px">
+      <label style="font-size:11px;color:#aaa;font-weight:500;text-transform:uppercase;letter-spacing:.05em">Lot #</label>
+      <input class="lot-input" id="lot-${s.id}" value="${esc(s.lot||'')}" placeholder="e.g. LOT-2024-001"
+        onchange="sheets.find(x=>x.id==${s.id}).lot=this.value.trim()">
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-title"><span>Sheet dimensions</span></div>
+    <div class="field-row">
+      <span class="field-label">Width (cm)</span>
+      <input type="number" id="sw-${s.id}" value="${s.sw.toFixed(1)}" min="1" max="500" step="0.1" onchange="syncSheet(${s.id});updateHint(${s.id})">
+      <span class="field-label" style="min-width:70px">Height (cm)</span>
+      <input type="number" id="sh-${s.id}" value="${s.sh.toFixed(1)}" min="1" max="500" step="0.1" onchange="syncSheet(${s.id});updateHint(${s.id})">
+      <span class="hint">Usable: <span id="hint-${s.id}">—</span></span>
+    </div>
+    <div class="presets">
+      <span style="font-size:12px;color:#bbb;align-self:center">Presets:</span>
+      ${Object.entries(PRESETS).map(([l,[w,h]])=>`<span class="preset" onclick="applyPreset(${s.id},${w},${h})">${l} (${w}×${h})</span>`).join('')}
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-title"><span>Dies &amp; minimum electrode counts</span></div>
+    ${dieRows}
+  </div>
+  <div class="btn-row">
+    <button class="btn-calc" onclick="optimize(${s.id},false)">Calculate layout</button>
+    <button class="btn-fill" onclick="optimize(${s.id},true)">Fill remaining space</button>
+    <button class="btn-sec" onclick="clearSheet(${s.id})">Clear</button>
+  </div>
+  <div class="results-area" id="results-${s.id}">
+    <div id="warn-${s.id}"></div>
+    <div class="metrics" id="metrics-${s.id}"></div>
+    <div class="card">
+      <div class="card-title"><span>Layout diagram</span><button class="btn-exp" onclick="exportPNG(${s.id})">Export PNG</button></div>
+      <div class="canvas-wrap" id="cvs-wrap-${s.id}">
+        <div class="canvas-inner" id="cvs-inner-${s.id}">
+          <canvas id="cvs-${s.id}"></canvas>
+        </div>
+        <div class="canvas-slider-row" id="cvs-slider-row-${s.id}" style="display:none">
+          <span class="canvas-slider-label">Zoom</span>
+          <input type="range" id="cvs-zoom-${s.id}" min="30" max="100" value="100" step="1"
+            oninput="applyZoom(${s.id},this.value)">
+          <span class="canvas-slider-pct" id="cvs-zoom-pct-${s.id}">100%</span>
+        </div>
+      </div>
+      <div class="legend" id="legend-${s.id}"></div>
+    </div>
+    <div class="card">
+      <div class="card-title"><span>Zone breakdown</span></div>
+      <div id="table-${s.id}"></div>
+    </div>
+  </div>`;
+}
+
+function syncSheet(id){
+  const s=sheets.find(x=>x.id===id);if(!s)return;
+  s.sw=parseFloat(document.getElementById(`sw-${id}`).value)||s.sw;
+  s.sh=parseFloat(document.getElementById(`sh-${id}`).value)||s.sh;
+  Object.keys(DIES).forEach(k=>{s.enabled[k]=document.getElementById(`en-${k}-${id}`).checked;s.mins[k]=parseInt(document.getElementById(`min-${k}-${id}`).value)||0;});
+}
+function updateHint(id){
+  const sw=parseFloat(document.getElementById(`sw-${id}`).value)||0;
+  const sh=parseFloat(document.getElementById(`sh-${id}`).value)||0;
+  document.getElementById(`hint-${id}`).textContent=`${Math.max(0,sw*10-2*MARGIN).toFixed(0)} × ${Math.max(0,sh*10-2*MARGIN).toFixed(0)} mm`;
+}
+function applyPreset(id,w,h){document.getElementById(`sw-${id}`).value=w.toFixed(1);document.getElementById(`sh-${id}`).value=h.toFixed(1);syncSheet(id);updateHint(id);}
+
+// Clear: zero all min inputs, keep canvas but redraw zones without electrode fills
+function clearSheet(id){
+  const s=sheets.find(x=>x.id===id);if(!s)return;
+  Object.keys(DIES).forEach(k=>{
+    s.mins[k]=0;
+    const el=document.getElementById(`min-${k}-${id}`);if(el)el.value=0;
+  });
+  const m=document.getElementById(`metrics-${id}`);if(m)m.innerHTML='';
+  const t=document.getElementById(`table-${id}`);if(t)t.innerHTML='';
+  const w=document.getElementById(`warn-${id}`);if(w)w.innerHTML='';
+  // Draw blank sheet canvas (no zones)
+  const cvs=document.getElementById(`cvs-${id}`);
+  if(cvs&&s.sw_mm)drawCanvas([],s.sw_mm,s.sh_mm,cvs,undefined,100);
+}
+
+// ── Geometry ──────────────────────────────────────────────────────────────────
+function subArrangements(die,n){
+  const res=[];
+  for(let c=1;c<=die.cols;c++)for(let r=1;r<=die.rows;r++){
+    if(c*r<n)continue;
+    res.push({subCols:c,subRows:r,count:c*r,footW:(c-1)*die.pitchX+die.eW,footH:(r-1)*die.pitchY+die.eH,partial:c<die.cols||r<die.rows});
+  }
+  res.sort((a,b)=>a.footW*a.footH-b.footW*b.footH);
+  return res;
+}
+
+function fitDie(die,avW,avH,minCount){
+  const target=Math.max(1,minCount);
+  const useMin=minCount>0;
+  // Always consider ALL sub-arrangements (down to 1x1) so that tiled smaller stamps
+  // can satisfy the target across multiple hits (e.g. two 2x1 hits = 4 electrodes)
+  const arrs=subArrangements(die,1);
+  let best=null;
+  for(const arr of arrs){
+    for(const rot of [false,true]){
+      const fw=rot?arr.footH:arr.footW,fh=rot?arr.footW:arr.footH;
+      const pX=rot?die.pitchY:die.pitchX,pY=rot?die.pitchX:die.pitchY;
+      const sc=rot?arr.subRows:arr.subCols,sr=rot?arr.subCols:arr.subRows;
+      if(fw>avW+0.001||fh>avH+0.001)continue;
+      const maxHX=Math.floor((avW-fw)/(sc*pX))+1;
+      const maxHY=Math.floor((avH-fh)/(sr*pY))+1;
+      if(useMin){
+        const hitsNeeded=Math.ceil(target/arr.count);
+        let bestArea=Infinity,useHX=1,useHY=1;
+        for(let hx=1;hx<=Math.min(maxHX,hitsNeeded);hx++){
+          const hy=Math.ceil(hitsNeeded/hx);
+          if(hy>maxHY||hx*hy<hitsNeeded||hx*hy*arr.count<target)continue;
+          const area=(fw+(hx-1)*sc*pX)*(fh+(hy-1)*sr*pY);
+          if(area<bestArea){bestArea=area;useHX=hx;useHY=hy;}
+        }
+        if(useHX*useHY*arr.count<target)continue;
+        const usedW=fw+(useHX-1)*sc*pX,usedH=fh+(useHY-1)*sr*pY;
+        if(usedW>avW+0.001||usedH>avH+0.001)continue;
+        const overshoot=useHX*useHY*arr.count-target;
+        // PRIMARY: least overshoot (exact match preferred). SECONDARY: largest stamp. TERTIARY: smallest area.
+        const score=-overshoot*1e9+arr.count*1e6-bestArea;
+        if(!best||score>best.score)best={hitsX:useHX,hitsY:useHY,sc,sr,pX,pY,eW:rot?die.eH:die.eW,eH:rot?die.eW:die.eH,subCols:rot?arr.subRows:arr.subCols,subRows:rot?arr.subCols:arr.subRows,fw,fh,rot,count:useHX*useHY*arr.count,usedW,usedH,score,partial:arr.partial};
+      } else {
+        const usedW=fw+(maxHX-1)*sc*pX,usedH=fh+(maxHY-1)*sr*pY;
+        if(usedW>avW+0.001||usedH>avH+0.001)continue;
+        const totalCount=maxHX*maxHY*arr.count;
+        // PRIMARY: most total electrodes. TIEBREAK: largest stamp (arr.count).
+        const score=totalCount*1e6+arr.count;
+        if(!best||score>best.score)best={hitsX:maxHX,hitsY:maxHY,sc,sr,pX,pY,eW:rot?die.eH:die.eW,eH:rot?die.eW:die.eH,subCols:rot?arr.subRows:arr.subCols,subRows:rot?arr.subCols:arr.subRows,fw,fh,rot,count:totalCount,usedW,usedH,score,partial:arr.partial};
+      }
+    }
+  }
+  return best;
+}
+
+function splitRegion(reg,usedW,usedH,dir){
+  const out=[];
+  if(dir==='h'){if(reg.h-usedH-GAP>5)out.push({x:reg.x,y:reg.y+usedH+GAP,w:reg.w,h:reg.h-usedH-GAP});if(reg.w-usedW-GAP>5)out.push({x:reg.x+usedW+GAP,y:reg.y,w:reg.w-usedW-GAP,h:usedH});}
+  else{if(reg.w-usedW-GAP>5)out.push({x:reg.x+usedW+GAP,y:reg.y,w:reg.w-usedW-GAP,h:reg.h});if(reg.h-usedH-GAP>5)out.push({x:reg.x,y:reg.y+usedH+GAP,w:usedW,h:reg.h-usedH-GAP});}
+  return out.filter(r=>r.w>4&&r.h>4);
+}
+
+function perms(arr){if(arr.length<=1)return[[...arr]];return arr.flatMap((v,i)=>perms([...arr.slice(0,i),...arr.slice(i+1)]).map(p=>[v,...p]));}
+
+function tryPack(mandOrder,allEnabled,mins,usable,dir,fillMode){
+  const zones=[];
+  let regions=[{x:MARGIN,y:MARGIN,w:usable.w,h:usable.h}];
+
+  // Place mandatory dies, satisfying each minimum exactly.
+  // Splits across multiple regions if needed; caps placed count to remaining.
+  for(const die of mandOrder){
+    let remaining=mins[die.key];
+    let attempts=0;
+    while(remaining>0&&attempts<50){
+      attempts++;
+      const need=Math.min(remaining,die.cols*die.rows);
+      let bestScore=-Infinity,bestLayout=null,bestRi=-1;
+      // First try: sub-arrangement that satisfies `need` in one region
+      for(let ri=0;ri<regions.length;ri++){
+        const layout=fitDie(die,regions[ri].w,regions[ri].h,need);
+        if(!layout)continue;
+        const score=layout.count*1e6-(layout.usedW*layout.usedH);
+        if(score>bestScore){bestScore=score;bestLayout=layout;bestRi=ri;}
+      }
+      // Fallback: place as many as fit anywhere, carry remainder forward
+      if(!bestLayout){
+        for(let ri=0;ri<regions.length;ri++){
+          const layout=fitDie(die,regions[ri].w,regions[ri].h,0);
+          if(!layout)continue;
+          const score=layout.count*1e6-(layout.usedW*layout.usedH);
+          if(score>bestScore){bestScore=score;bestLayout=layout;bestRi=ri;}
+        }
+      }
+      if(!bestLayout)break;
+      // Cap to exactly what's still needed — no bonus electrodes
+      const placed=Math.min(bestLayout.count,remaining);
+      zones.push({die,layout:{...bestLayout,count:placed},x:regions[bestRi].x,y:regions[bestRi].y});
+      regions.splice(bestRi,1,...splitRegion(regions[bestRi],bestLayout.usedW,bestLayout.usedH,dir));
+      remaining-=placed;
+    }
+    if(remaining>0)return null;
+  }
+
+  // Greedy fill — only runs when "Fill remaining space" is pressed
+  if(fillMode){
+    let improved=true;
+    while(improved){
+      improved=false;
+      let bestCount=0,bestZone=null,bestRi=-1;
+      for(const die of allEnabled){
+        for(let ri=0;ri<regions.length;ri++){
+          const layout=fitDie(die,regions[ri].w,regions[ri].h,0);
+          if(layout&&layout.count>bestCount){bestCount=layout.count;bestZone={die,layout,x:regions[ri].x,y:regions[ri].y};bestRi=ri;}
+        }
+      }
+      if(bestZone){zones.push(bestZone);regions.splice(bestRi,1,...splitRegion(regions[bestRi],bestZone.layout.usedW,bestZone.layout.usedH,dir));improved=true;}
+    }
+  }
+  return zones;
+}
+
+function minSheetHint(allEnabled,mins){
+  const mand=allEnabled.filter(d=>mins[d.key]>0);if(!mand.length)return null;
+  const stackedH=mand.reduce((s,die,i)=>{const a=subArrangements(die,Math.min(mins[die.key],die.cols*die.rows));return s+(a[0]?a[0].footH:0)+(i>0?GAP:0);},0);
+  const maxW=Math.max(...mand.map(die=>{const a=subArrangements(die,Math.min(mins[die.key],die.cols*die.rows));return a[0]?a[0].footW:0;}));
+  return{w:+((maxW+2*MARGIN)/10).toFixed(1),h:+((stackedH+2*MARGIN)/10).toFixed(1)};
+}
+
+// ── Optimize ──────────────────────────────────────────────────────────────────
+function optimize(id,fillMode){
+  syncSheet(id);
+  const s=sheets.find(x=>x.id===id);if(!s)return;
+  const sw=s.sw*10,sh=s.sh*10;
+  const usable={w:sw-2*MARGIN,h:sh-2*MARGIN};
+  if(usable.w<=0||usable.h<=0){showWarn(id,'Sheet too small after margin.');return;}
+  const allEnabled=Object.entries(DIES).filter(([k])=>s.enabled[k]).map(([k,v])=>({key:k,...v}));
+  if(!allEnabled.length){showWarn(id,'Enable at least one die type.');return;}
+  const mandatory=allEnabled.filter(d=>s.mins[d.key]>0);
+  // In fill mode with no minimums, treat all enabled as candidates from the start
+  const hasMins=mandatory.length>0;
+  // "Calculate layout" with no minimums: run greedy fill so the sheet isn't blank
+  const effectiveFill=fillMode||!hasMins;
+  let bestZones=null,bestTotal=-1;
+  for(const ord of (mandatory.length?perms(mandatory):[[]])){
+    for(const dir of ['h','v']){
+      const z=tryPack(ord,allEnabled,s.mins,usable,dir,effectiveFill);
+      if(z){const t=z.reduce((a,x)=>a+x.layout.count,0);if(t>bestTotal){bestTotal=t;bestZones=z;}}
+    }
+  }
+  if(!bestZones||!bestZones.length){
+    const hint=minSheetHint(allEnabled,s.mins);
+    let msg='Could not fit all required electrodes on this sheet.';
+    if(hint)msg+=` Try at least ${hint.w} × ${hint.h} cm.`;
+    showWarn(id,msg);return;
+  }
+  s.zones=bestZones;s.sw_mm=sw;s.sh_mm=sh;
+  renderResults(s);
+}
+
+// ── Render ────────────────────────────────────────────────────────────────────
+function showWarn(id,msg){const el=document.getElementById(`results-${id}`);if(el){el.style.display='block';document.getElementById(`warn-${id}`).innerHTML='<div class="warn">⚠ '+msg+'</div>';}}
+
+function renderResults(s){
+  const el=document.getElementById(`results-${s.id}`);if(!el)return;
+  el.style.display='block';document.getElementById(`warn-${s.id}`).innerHTML='';
+  const{zones,sw_mm:sw,sh_mm:sh}=s;
+  const total=zones.reduce((a,z)=>a+z.layout.count,0);
+  const used=zones.reduce((a,z)=>a+z.layout.usedW*z.layout.usedH,0);
+  const util=((used/(sw*sh))*100).toFixed(1);
+  const counts={};zones.forEach(z=>counts[z.die.name]=(counts[z.die.name]||0)+z.layout.count);
+  let m=`<div class="metric"><div class="metric-label">Total electrodes</div><div class="metric-value">${total}</div></div>
+    <div class="metric"><div class="metric-label">Area used</div><div class="metric-value">${util}%</div></div>
+    <div class="metric"><div class="metric-label">Zones</div><div class="metric-value">${zones.length}</div></div>`;
+  Object.entries(counts).forEach(([n,c])=>m+=`<div class="metric"><div class="metric-label">${n}</div><div class="metric-value">${c}</div><div class="metric-sub">electrodes</div></div>`);
+  document.getElementById(`metrics-${s.id}`).innerHTML=m;
+  // Reset zoom slider to 100% before drawing
+  const zoomEl=document.getElementById(`cvs-zoom-${s.id}`);
+  const zoomPctEl=document.getElementById(`cvs-zoom-pct-${s.id}`);
+  if(zoomEl){zoomEl.value=100;}
+  if(zoomPctEl){zoomPctEl.textContent='100%';}
+  drawCanvas(zones,sw,sh,document.getElementById(`cvs-${s.id}`),undefined,100);
+  let t='<table><thead><tr><th>Die</th><th>Sub-grid</th><th>Hits (X×Y)</th><th>Elec/hit</th><th>Total</th><th>Zone (mm)</th><th>Origin (mm)</th></tr></thead><tbody>';
+  zones.forEach(z=>{const l=z.layout;
+    t+=`<tr><td><span class="swatch" style="background:${z.die.color};border:1px solid ${z.die.dark};margin-right:5px"></span>${z.die.name}${l.rot?' ↺':''}</td>
+    <td>${l.subCols}×${l.subRows}${l.partial?'<span class="tag">partial</span>':''}</td>
+    <td>${l.hitsX}×${l.hitsY}</td><td>${l.subCols*l.subRows}</td>
+    <td><strong>${l.count}</strong></td><td>${l.usedW.toFixed(1)}×${l.usedH.toFixed(1)}</td>
+    <td>(${z.x.toFixed(1)}, ${z.y.toFixed(1)})</td></tr>`;
+  });
+  t+='</tbody></table>';document.getElementById(`table-${s.id}`).innerHTML=t;
+  const seen=new Set();let leg='';
+  zones.forEach(z=>{if(!seen.has(z.die.name)){seen.add(z.die.name);leg+=`<div class="legend-item"><div class="legend-dot" style="background:${z.die.light};border:1px solid ${z.die.color}"></div>${z.die.name}</div>`;}});
+  leg+='<div class="legend-item"><div class="legend-dot" style="background:#f0f0ee;border:1px solid #ccc"></div>Unused</div>';
+  document.getElementById(`legend-${s.id}`).innerHTML=leg;
+}
+
+// ── Canvas ────────────────────────────────────────────────────────────────────
+function drawCanvas(zones,sw,sh,cvs,dprOverride,zoomPct){
+  const dpr=dprOverride||(window.devicePixelRatio||1);
+  // Available width = inner container width minus 24px (12px padding each side)
+  const wrap=cvs.closest?.('.canvas-inner');
+  const containerW=wrap?(wrap.offsetWidth||800):((cvs.parentElement?.offsetWidth||824)-24);
+  const availW=Math.max(200,containerW-2);
+  // zoom 30–100%, default 100
+  const zoom=(zoomPct!=null?zoomPct:100)/100;
+  const S=availW/sw*zoom;
+  const W=Math.round(sw*S),H=Math.round(sh*S);
+  cvs.width=W*dpr;cvs.height=H*dpr;cvs.style.width=W+'px';cvs.style.height=H+'px';
+  const ctx=cvs.getContext('2d');ctx.scale(dpr,dpr);
+
+  // Show/hide slider based on whether canvas is wider than container
+  const sliderRow=document.getElementById(cvs.id.replace('cvs-','cvs-slider-row-'));
+  if(sliderRow&&!dprOverride){
+    const needsScroll=W>availW+1;
+    sliderRow.style.display=needsScroll?'flex':'none';
+  }
+
+  // Sheet background
+  ctx.fillStyle='#f7f7f5';ctx.fillRect(0,0,W,H);
+  ctx.strokeStyle='#bbb';ctx.lineWidth=1;ctx.strokeRect(0.5,0.5,W-1,H-1);
+  // Margin guide
+  ctx.strokeStyle='#d8d8d6';ctx.setLineDash([4,3]);ctx.lineWidth=0.8;
+  ctx.strokeRect(MARGIN*S,MARGIN*S,(sw-2*MARGIN)*S,(sh-2*MARGIN)*S);
+  ctx.setLineDash([]);
+
+  zones.forEach(({die,layout,x,y})=>{
+    const{hitsX,hitsY,sc,sr,pX,pY,eW,eH,count,usedW,usedH,rot}=layout;
+    const zx=x*S,zy=y*S,zw=usedW*S,zh=usedH*S;
+
+    // Zone background fill
+    ctx.fillStyle=die.light;
+    ctx.fillRect(zx,zy,zw,zh);
+
+    // Draw each electrode as white rounded rect with coloured border
+    for(let hy=0;hy<hitsY;hy++)for(let hx=0;hx<hitsX;hx++){
+      const hox=x+hx*sc*pX,hoy=y+hy*sr*pY;
+      for(let r=0;r<sr;r++)for(let c=0;c<sc;c++){
+        const ex=(hox+c*pX)*S,ey=(hoy+r*pY)*S;
+        const ew2=eW*S,eh2=eH*S;
+        const rad=Math.min(ew2,eh2)*0.06;
+        ctx.fillStyle='#fff';
+        ctx.beginPath();
+        ctx.moveTo(ex+rad,ey);ctx.lineTo(ex+ew2-rad,ey);ctx.arcTo(ex+ew2,ey,ex+ew2,ey+rad,rad);
+        ctx.lineTo(ex+ew2,ey+eh2-rad);ctx.arcTo(ex+ew2,ey+eh2,ex+ew2-rad,ey+eh2,rad);
+        ctx.lineTo(ex+rad,ey+eh2);ctx.arcTo(ex,ey+eh2,ex,ey+eh2-rad,rad);
+        ctx.lineTo(ex,ey+rad);ctx.arcTo(ex,ey,ex+rad,ey,rad);
+        ctx.closePath();ctx.fill();
+        ctx.strokeStyle=die.color;ctx.lineWidth=0.7;ctx.stroke();
+      }
+    }
+
+    // Zone border
+    ctx.strokeStyle=die.dark;ctx.lineWidth=1.5;
+    ctx.strokeRect(zx+0.75,zy+0.75,zw-1.5,zh-1.5);
+
+    // Label
+    const fs=Math.max(9,Math.min(13,zw*0.08));
+    ctx.font=`600 ${fs}px -apple-system,sans-serif`;
+    ctx.fillStyle='rgba(255,255,255,0.92)';
+    const label=die.name+(rot?' ↺':'')+' ×'+count;
+    const tw=ctx.measureText(label).width;
+    ctx.fillRect(zx+4,zy+3,tw+6,fs+6);
+    ctx.fillStyle=die.dark;
+    ctx.fillText(label,zx+7,zy+fs+5);
+  });
+
+  // Sheet dimension labels
+  ctx.font='11px -apple-system,sans-serif';ctx.fillStyle='#bbb';
+  const wl=(sw/10).toFixed(1)+' cm';ctx.fillText(wl,W/2-ctx.measureText(wl).width/2,H-4);
+  ctx.save();ctx.translate(11,H/2);ctx.rotate(-Math.PI/2);
+  const hl=(sh/10).toFixed(1)+' cm';ctx.fillText(hl,-ctx.measureText(hl).width/2,0);ctx.restore();
+}
+
+function applyZoom(id,val){
+  const s=sheets.find(x=>x.id===id);if(!s||!s.zones)return;
+  const pct=document.getElementById(`cvs-zoom-pct-${id}`);
+  if(pct)pct.textContent=val+'%';
+  drawCanvas(s.zones,s.sw_mm,s.sh_mm,document.getElementById(`cvs-${id}`),undefined,parseInt(val));
+}
+
+function makeOffscreen(s){
+  if(!s.zones)return null;
+  const sw=s.sw_mm, sh=s.sh_mm;
+  // Export at 3px per mm — clean fixed scale, no DOM involvement
+  const PX_PER_MM=3;
+  const W=Math.round(sw*PX_PER_MM), H=Math.round(sh*PX_PER_MM);
+  const off=document.createElement('canvas');
+  off.width=W; off.height=H;
+  off.style.width=W+'px'; off.style.height=H+'px';
+  const S=PX_PER_MM;
+  const ctx=off.getContext('2d');
+  // Draw directly — same logic as drawCanvas but with fixed S, no dpr, no DOM hooks
+  ctx.fillStyle='#f7f7f5'; ctx.fillRect(0,0,W,H);
+  ctx.strokeStyle='#bbb'; ctx.lineWidth=1; ctx.strokeRect(0.5,0.5,W-1,H-1);
+  ctx.strokeStyle='#d8d8d6'; ctx.setLineDash([4,3]); ctx.lineWidth=0.8;
+  ctx.strokeRect(MARGIN*S,MARGIN*S,(sw-2*MARGIN)*S,(sh-2*MARGIN)*S);
+  ctx.setLineDash([]);
+  s.zones.forEach(({die,layout,x,y})=>{
+    const{hitsX,hitsY,sc,sr,pX,pY,eW,eH,count,usedW,usedH,rot}=layout;
+    const zx=x*S,zy=y*S,zw=usedW*S,zh=usedH*S;
+    ctx.fillStyle=die.light; ctx.fillRect(zx,zy,zw,zh);
+    for(let hy=0;hy<hitsY;hy++)for(let hx=0;hx<hitsX;hx++){
+      const hox=x+hx*sc*pX, hoy=y+hy*sr*pY;
+      for(let r=0;r<sr;r++)for(let c=0;c<sc;c++){
+        const ex=(hox+c*pX)*S, ey=(hoy+r*pY)*S, ew2=eW*S, eh2=eH*S;
+        const rad=Math.min(ew2,eh2)*0.06;
+        ctx.fillStyle='#fff'; ctx.beginPath();
+        ctx.moveTo(ex+rad,ey); ctx.lineTo(ex+ew2-rad,ey); ctx.arcTo(ex+ew2,ey,ex+ew2,ey+rad,rad);
+        ctx.lineTo(ex+ew2,ey+eh2-rad); ctx.arcTo(ex+ew2,ey+eh2,ex+ew2-rad,ey+eh2,rad);
+        ctx.lineTo(ex+rad,ey+eh2); ctx.arcTo(ex,ey+eh2,ex,ey+eh2-rad,rad);
+        ctx.lineTo(ex,ey+rad); ctx.arcTo(ex,ey,ex+rad,ey,rad);
+        ctx.closePath(); ctx.fill();
+        ctx.strokeStyle=die.color; ctx.lineWidth=0.7; ctx.stroke();
+      }
+    }
+    ctx.strokeStyle=die.dark; ctx.lineWidth=1.5; ctx.strokeRect(zx+0.75,zy+0.75,zw-1.5,zh-1.5);
+    const fs=Math.max(9,Math.min(13,zw*0.08));
+    ctx.font=`600 ${fs}px -apple-system,sans-serif`;
+    const label=die.name+(rot?' ↺':'')+' ×'+count;
+    const tw=ctx.measureText(label).width;
+    ctx.fillStyle='rgba(255,255,255,0.92)'; ctx.fillRect(zx+4,zy+3,tw+6,fs+6);
+    ctx.fillStyle=die.dark; ctx.fillText(label,zx+7,zy+fs+5);
+  });
+  ctx.font='11px -apple-system,sans-serif'; ctx.fillStyle='#bbb';
+  const wl=(sw/10).toFixed(1)+' cm'; ctx.fillText(wl,W/2-ctx.measureText(wl).width/2,H-4);
+  ctx.save(); ctx.translate(11,H/2); ctx.rotate(-Math.PI/2);
+  const hl=(sh/10).toFixed(1)+' cm'; ctx.fillText(hl,-ctx.measureText(hl).width/2,0); ctx.restore();
+  return off;
+}
+
+// Downloads a file, working both from file:// and http://
+function triggerDownload(filename,url){
+  const a=document.createElement('a');
+  a.href=url; a.download=filename;
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(()=>{document.body.removeChild(a);URL.revokeObjectURL(url);},200);
+}
+
+function exportPNG(id){
+  const s=sheets.find(x=>x.id===id);if(!s||!s.zones)return;
+  const off=makeOffscreen(s);if(!off)return;
+  const safeName=(s.name||`Sheet_${id}`).replace(/[^\w\-]/g,'_');
+  const dataURL=off.toDataURL('image/png');
+  const a=document.createElement('a');
+  a.href=dataURL;
+  a.download=`${safeName}_${s.sw}x${s.sh}cm.png`;
+  document.body.appendChild(a);a.click();setTimeout(()=>document.body.removeChild(a),200);
+}
+
+async function exportAllPNG(){
+  const ready=sheets.filter(s=>s.zones);
+  if(!ready.length){alert('Calculate at least one layout first.');return;}
+  const zip=new JSZip();
+  for(const s of ready){
+    const off=makeOffscreen(s);if(!off)continue;
+    const dataURL=off.toDataURL('image/png');
+    const base64=dataURL.split(',')[1];
+    const safeName=(s.name||`Sheet_${s.id}`).replace(/[^\w\-]/g,'_');
+    zip.file(`${safeName}_${s.sw}x${s.sh}cm.png`,base64,{base64:true});
+  }
+  const zb=await zip.generateAsync({type:'blob'});
+  const url=URL.createObjectURL(zb);
+  triggerDownload('electrode_layouts.zip',url);
+}
+
+function exportCSV(){
+  const ready=sheets.filter(s=>s.zones);
+  if(!ready.length){alert('Calculate at least one layout first.');return;}
+  const rows=[];
+  rows.push(['Sheet','Lot #','Width (cm)','Height (cm)','Die','Elec/hit','Total Electrodes','Origin X (mm)','Origin Y (mm)','Sheet Total Electrodes','TP5 Total','TP50v1 Total','TP50v2 Total','CT25 Total','Area Used (%)']);
+  ready.forEach(s=>{
+    const total=s.zones.reduce((a,z)=>a+z.layout.count,0);
+    const counts={};s.zones.forEach(z=>counts[z.die.name]=(counts[z.die.name]||0)+z.layout.count);
+    const used=s.zones.reduce((a,z)=>a+z.layout.usedW*z.layout.usedH,0);
+    const util=((used/(s.sw_mm*s.sh_mm))*100).toFixed(1);
+    s.zones.forEach((z,i)=>{
+      const l=z.layout;
+      rows.push([
+        s.name,s.lot||'',s.sw,s.sh,
+        z.die.name,l.subCols*l.subRows,l.count,
+        z.x.toFixed(2),z.y.toFixed(2),
+        i===0?total:'',i===0?(counts['TP5']||0):'',i===0?(counts['TP50v1']||0):'',
+        i===0?(counts['TP50v2']||0):'',i===0?(counts['CT25']||0):'',i===0?util:''
+      ]);
+    });
+    rows.push([]);
+  });
+  const csv=rows.map(r=>r.map(v=>{
+    const s=String(v??'');
+    return s.includes(',')||s.includes('"')||s.includes('\n')?`"${s.replace(/"/g,'""')}"`:s;
+  }).join(',')).join('\n');
+  // Use data URL so it works from file:// without blob URL restrictions
+  const dataURL='data:text/csv;charset=utf-8,'+encodeURIComponent(csv);
+  const a=document.createElement('a');
+  a.href=dataURL; a.download='electrode_results.csv';
+  document.body.appendChild(a);a.click();setTimeout(()=>document.body.removeChild(a),200);
+}
+
+addSheet();
+window.addEventListener('resize',()=>updateTabScroll());
+// Use ResizeObserver on the strip to catch layout changes
+const _tabStripRO=new ResizeObserver(()=>updateTabScroll());
+const _tabStripEl=document.getElementById('tab-strip');
+if(_tabStripEl)_tabStripRO.observe(_tabStripEl);
+</script>
+</body>
+</html>
