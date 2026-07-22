@@ -269,9 +269,10 @@ function updateHint(id){
 }
 function applyPreset(id,w,h){document.getElementById(`sw-${id}`).value=w.toFixed(1);document.getElementById(`sh-${id}`).value=h.toFixed(1);syncSheet(id);updateHint(id);}
 
-// Clear: zero all min inputs, keep canvas but redraw zones without electrode fills
+// Clear: zero all min inputs and wipe the layout entirely
 function clearSheet(id){
   const s=sheets.find(x=>x.id===id);if(!s)return;
+  s.zones=null;
   Object.keys(DIES).forEach(k=>{
     s.mins[k]=0;
     const el=document.getElementById(`min-${k}-${id}`);if(el)el.value=0;
@@ -279,7 +280,7 @@ function clearSheet(id){
   const m=document.getElementById(`metrics-${id}`);if(m)m.innerHTML='';
   const t=document.getElementById(`table-${id}`);if(t)t.innerHTML='';
   const w=document.getElementById(`warn-${id}`);if(w)w.innerHTML='';
-  // Draw blank sheet canvas (no zones)
+  // Draw blank sheet canvas
   const cvs=document.getElementById(`cvs-${id}`);
   if(cvs&&s.sw_mm)drawCanvas([],s.sw_mm,s.sh_mm,cvs,undefined,100);
 }
@@ -295,111 +296,111 @@ function subArrangements(die,n){
   return res;
 }
 
-function fitDie(die,avW,avH,minCount){
-  const target=Math.max(1,minCount);
-  const useMin=minCount>0;
-  // Always consider ALL sub-arrangements (down to 1x1) so that tiled smaller stamps
-  // can satisfy the target across multiple hits (e.g. two 2x1 hits = 4 electrodes)
+// Returns exactly ONE die stamp (hitsX=1, hitsY=1) that fits in avW×avH.
+// minCount>0: prefer stamp with least overshoot, then largest stamp, then smallest area.
+// minCount=0: prefer largest stamp (most electrodes per hit), then smallest area.
+function fitStamp(die,avW,avH,minCount){
   const arrs=subArrangements(die,1);
   let best=null;
   for(const arr of arrs){
     for(const rot of [false,true]){
-      const fw=rot?arr.footH:arr.footW,fh=rot?arr.footW:arr.footH;
-      const pX=rot?die.pitchY:die.pitchX,pY=rot?die.pitchX:die.pitchY;
-      const sc=rot?arr.subRows:arr.subCols,sr=rot?arr.subCols:arr.subRows;
+      const fw=rot?arr.footH:arr.footW, fh=rot?arr.footW:arr.footH;
       if(fw>avW+0.001||fh>avH+0.001)continue;
-      const maxHX=Math.floor((avW-fw)/(sc*pX))+1;
-      const maxHY=Math.floor((avH-fh)/(sr*pY))+1;
-      if(useMin){
-        const hitsNeeded=Math.ceil(target/arr.count);
-        let bestArea=Infinity,useHX=1,useHY=1;
-        for(let hx=1;hx<=Math.min(maxHX,hitsNeeded);hx++){
-          const hy=Math.ceil(hitsNeeded/hx);
-          if(hy>maxHY||hx*hy<hitsNeeded||hx*hy*arr.count<target)continue;
-          const area=(fw+(hx-1)*sc*pX)*(fh+(hy-1)*sr*pY);
-          if(area<bestArea){bestArea=area;useHX=hx;useHY=hy;}
-        }
-        if(useHX*useHY*arr.count<target)continue;
-        const usedW=fw+(useHX-1)*sc*pX,usedH=fh+(useHY-1)*sr*pY;
-        if(usedW>avW+0.001||usedH>avH+0.001)continue;
-        const overshoot=useHX*useHY*arr.count-target;
-        // PRIMARY: least overshoot (exact match preferred). SECONDARY: largest stamp. TERTIARY: smallest area.
-        const score=-overshoot*1e9+arr.count*1e6-bestArea;
-        if(!best||score>best.score)best={hitsX:useHX,hitsY:useHY,sc,sr,pX,pY,eW:rot?die.eH:die.eW,eH:rot?die.eW:die.eH,subCols:rot?arr.subRows:arr.subCols,subRows:rot?arr.subCols:arr.subRows,fw,fh,rot,count:useHX*useHY*arr.count,usedW,usedH,score,partial:arr.partial};
+      const pX=rot?die.pitchY:die.pitchX, pY=rot?die.pitchX:die.pitchY;
+      const sc=rot?arr.subRows:arr.subCols, sr=rot?arr.subCols:arr.subRows;
+      const count=arr.count;
+      let score;
+      if(minCount>0){
+        if(count<minCount)continue; // stamp must meet minimum on its own
+        const overshoot=count-minCount;
+        // least overshoot → largest stamp → smallest area
+        score=-overshoot*1e9+arr.count*1e6-(fw*fh);
       } else {
-        const usedW=fw+(maxHX-1)*sc*pX,usedH=fh+(maxHY-1)*sr*pY;
-        if(usedW>avW+0.001||usedH>avH+0.001)continue;
-        const totalCount=maxHX*maxHY*arr.count;
-        // PRIMARY: most total electrodes. TIEBREAK: largest stamp (arr.count).
-        const score=totalCount*1e6+arr.count;
-        if(!best||score>best.score)best={hitsX:maxHX,hitsY:maxHY,sc,sr,pX,pY,eW:rot?die.eH:die.eW,eH:rot?die.eW:die.eH,subCols:rot?arr.subRows:arr.subCols,subRows:rot?arr.subCols:arr.subRows,fw,fh,rot,count:totalCount,usedW,usedH,score,partial:arr.partial};
+        // largest stamp (most electrodes per hit) → smallest area
+        score=arr.count*1e6-(fw*fh);
       }
+      if(!best||score>best.score)best={
+        hitsX:1,hitsY:1,sc,sr,pX,pY,
+        eW:rot?die.eH:die.eW,eH:rot?die.eW:die.eH,
+        subCols:rot?arr.subRows:arr.subCols,subRows:rot?arr.subCols:arr.subRows,
+        fw,fh,rot,count,usedW:fw,usedH:fh,score,partial:arr.partial
+      };
     }
   }
   return best;
 }
 
+// fitDie kept for backward compat — just delegates to fitStamp
+function fitDie(die,avW,avH,minCount){ return fitStamp(die,avW,avH,minCount); }
+
 function splitRegion(reg,usedW,usedH,dir){
   const out=[];
-  if(dir==='h'){if(reg.h-usedH-GAP>5)out.push({x:reg.x,y:reg.y+usedH+GAP,w:reg.w,h:reg.h-usedH-GAP});if(reg.w-usedW-GAP>5)out.push({x:reg.x+usedW+GAP,y:reg.y,w:reg.w-usedW-GAP,h:usedH});}
-  else{if(reg.w-usedW-GAP>5)out.push({x:reg.x+usedW+GAP,y:reg.y,w:reg.w-usedW-GAP,h:reg.h});if(reg.h-usedH-GAP>5)out.push({x:reg.x,y:reg.y+usedH+GAP,w:usedW,h:reg.h-usedH-GAP});}
+  if(dir==='h'){
+    if(reg.h-usedH-GAP>5)out.push({x:reg.x,y:reg.y+usedH+GAP,w:reg.w,h:reg.h-usedH-GAP});
+    if(reg.w-usedW-GAP>5)out.push({x:reg.x+usedW+GAP,y:reg.y,w:reg.w-usedW-GAP,h:usedH});
+  } else {
+    if(reg.w-usedW-GAP>5)out.push({x:reg.x+usedW+GAP,y:reg.y,w:reg.w-usedW-GAP,h:reg.h});
+    if(reg.h-usedH-GAP>5)out.push({x:reg.x,y:reg.y+usedH+GAP,w:usedW,h:reg.h-usedH-GAP});
+  }
   return out.filter(r=>r.w>4&&r.h>4);
 }
 
 function perms(arr){if(arr.length<=1)return[[...arr]];return arr.flatMap((v,i)=>perms([...arr.slice(0,i),...arr.slice(i+1)]).map(p=>[v,...p]));}
 
+// Place one stamp at a time. Each zone = one stamp. GAP enforced between all zones via splitRegion.
 function tryPack(mandOrder,allEnabled,mins,usable,dir,fillMode){
   const zones=[];
   let regions=[{x:MARGIN,y:MARGIN,w:usable.w,h:usable.h}];
 
-  // Place mandatory dies, satisfying each minimum exactly.
-  // Splits across multiple regions if needed; caps placed count to remaining.
+  // Mandatory: place stamps one at a time until minimum count is met
   for(const die of mandOrder){
     let remaining=mins[die.key];
     let attempts=0;
-    while(remaining>0&&attempts<50){
+    while(remaining>0&&attempts<100){
       attempts++;
+      // Try to find a stamp that exactly meets remaining (or as close as possible)
       const need=Math.min(remaining,die.cols*die.rows);
-      let bestScore=-Infinity,bestLayout=null,bestRi=-1;
-      // First try: sub-arrangement that satisfies `need` in one region
+      let bestScore=-Infinity,bestStamp=null,bestRi=-1;
       for(let ri=0;ri<regions.length;ri++){
-        const layout=fitDie(die,regions[ri].w,regions[ri].h,need);
-        if(!layout)continue;
-        const score=layout.count*1e6-(layout.usedW*layout.usedH);
-        if(score>bestScore){bestScore=score;bestLayout=layout;bestRi=ri;}
-      }
-      // Fallback: place as many as fit anywhere, carry remainder forward
-      if(!bestLayout){
-        for(let ri=0;ri<regions.length;ri++){
-          const layout=fitDie(die,regions[ri].w,regions[ri].h,0);
-          if(!layout)continue;
-          const score=layout.count*1e6-(layout.usedW*layout.usedH);
-          if(score>bestScore){bestScore=score;bestLayout=layout;bestRi=ri;}
+        // First: try a stamp that meets `need`
+        const s1=fitStamp(die,regions[ri].w,regions[ri].h,need);
+        if(s1){
+          const sc=-( (s1.count-need)*1e9 ) + s1.count*1e6 - s1.usedW*s1.usedH;
+          if(sc>bestScore){bestScore=sc;bestStamp=s1;bestRi=ri;}
+        }
+        // Fallback: any stamp at all (partial progress toward minimum)
+        const s0=fitStamp(die,regions[ri].w,regions[ri].h,0);
+        if(s0&&!s1){
+          const sc=s0.count*1e6-s0.usedW*s0.usedH;
+          if(sc>bestScore){bestScore=sc;bestStamp=s0;bestRi=ri;}
         }
       }
-      if(!bestLayout)break;
-      // Cap to exactly what's still needed — no bonus electrodes
-      const placed=Math.min(bestLayout.count,remaining);
-      zones.push({die,layout:{...bestLayout,count:placed},x:regions[bestRi].x,y:regions[bestRi].y});
-      regions.splice(bestRi,1,...splitRegion(regions[bestRi],bestLayout.usedW,bestLayout.usedH,dir));
+      if(!bestStamp)break;
+      const placed=Math.min(bestStamp.count,remaining);
+      zones.push({die,layout:{...bestStamp,count:placed},x:regions[bestRi].x,y:regions[bestRi].y});
+      regions.splice(bestRi,1,...splitRegion(regions[bestRi],bestStamp.usedW,bestStamp.usedH,dir));
       remaining-=placed;
     }
     if(remaining>0)return null;
   }
 
-  // Greedy fill — only runs when "Fill remaining space" is pressed
+  // Greedy fill: one stamp at a time, each gets its own zone with GAP enforced
   if(fillMode){
     let improved=true;
     while(improved){
       improved=false;
-      let bestCount=0,bestZone=null,bestRi=-1;
+      let bestCount=0,bestStamp=null,bestRi=-1;
       for(const die of allEnabled){
         for(let ri=0;ri<regions.length;ri++){
-          const layout=fitDie(die,regions[ri].w,regions[ri].h,0);
-          if(layout&&layout.count>bestCount){bestCount=layout.count;bestZone={die,layout,x:regions[ri].x,y:regions[ri].y};bestRi=ri;}
+          const s=fitStamp(die,regions[ri].w,regions[ri].h,0);
+          if(s&&s.count>bestCount){bestCount=s.count;bestStamp={die,layout:s,x:regions[ri].x,y:regions[ri].y};bestRi=ri;}
         }
       }
-      if(bestZone){zones.push(bestZone);regions.splice(bestRi,1,...splitRegion(regions[bestRi],bestZone.layout.usedW,bestZone.layout.usedH,dir));improved=true;}
+      if(bestStamp){
+        zones.push(bestStamp);
+        regions.splice(bestRi,1,...splitRegion(regions[bestRi],bestStamp.layout.usedW,bestStamp.layout.usedH,dir));
+        improved=true;
+      }
     }
   }
   return zones;
@@ -412,6 +413,63 @@ function minSheetHint(allEnabled,mins){
   return{w:+((maxW+2*MARGIN)/10).toFixed(1),h:+((stackedH+2*MARGIN)/10).toFixed(1)};
 }
 
+// Compute remaining free regions after existing zones, with GAP already baked in.
+// Each zone footprint is expanded by GAP before subtraction, so the resulting
+// free regions are already correctly spaced — no further offset needed when placing.
+// Sheet-margin edges are NOT expanded (the MARGIN is already the boundary).
+function remainingRegions(existingZones,sw_mm,sh_mm){
+  const usableX=MARGIN, usableY=MARGIN;
+  const usableX2=sw_mm-MARGIN, usableY2=sh_mm-MARGIN;
+  let free=[{x:usableX,y:usableY,w:usableX2-usableX,h:usableY2-usableY}];
+  for(const zone of existingZones){
+    // Expand zone by GAP, but clamp to sheet edges
+    const zx =Math.max(usableX, zone.x-GAP);
+    const zy =Math.max(usableY, zone.y-GAP);
+    const zx2=Math.min(usableX2, zone.x+zone.layout.usedW+GAP);
+    const zy2=Math.min(usableY2, zone.y+zone.layout.usedH+GAP);
+    const next=[];
+    for(const r of free){
+      const rx2=r.x+r.w, ry2=r.y+r.h;
+      if(zx2<=r.x||zx>=rx2||zy2<=r.y||zy>=ry2){next.push(r);continue;}
+      if(r.x <zx)  next.push({x:r.x, y:r.y,  w:zx-r.x,   h:r.h});
+      if(rx2>zx2)  next.push({x:zx2, y:r.y,  w:rx2-zx2,  h:r.h});
+      if(r.y <zy)  next.push({x:Math.max(r.x,zx),y:r.y,  w:Math.min(rx2,zx2)-Math.max(r.x,zx),h:zy-r.y});
+      if(ry2>zy2)  next.push({x:Math.max(r.x,zx),y:zy2,  w:Math.min(rx2,zx2)-Math.max(r.x,zx),h:ry2-zy2});
+    }
+    free=next.filter(r=>r.w>4&&r.h>4);
+  }
+  return free;
+}
+
+// Greedy fill into free regions — one stamp per zone, placed at region origin.
+// Regions already have GAP baked in from remainingRegions, so no offset needed.
+function fillRegions(regions,allEnabled){
+  const zones=[];
+  let improved=true;
+  while(improved){
+    improved=false;
+    let bestCount=0,bestStamp=null,bestRi=-1;
+    for(const die of allEnabled){
+      for(let ri=0;ri<regions.length;ri++){
+        const s=fitStamp(die,regions[ri].w,regions[ri].h,0);
+        if(s&&s.count>bestCount){
+          bestCount=s.count;
+          bestStamp={die,layout:s,x:regions[ri].x,y:regions[ri].y};
+          bestRi=ri;
+        }
+      }
+    }
+    if(bestStamp){
+      zones.push(bestStamp);
+      const sH=splitRegion(regions[bestRi],bestStamp.layout.usedW,bestStamp.layout.usedH,'h');
+      const sV=splitRegion(regions[bestRi],bestStamp.layout.usedW,bestStamp.layout.usedH,'v');
+      regions.splice(bestRi,1,...(sH.reduce((s,r)=>s+r.w*r.h,0)>=sV.reduce((s,r)=>s+r.w*r.h,0)?sH:sV));
+      improved=true;
+    }
+  }
+  return zones;
+}
+
 // ── Optimize ──────────────────────────────────────────────────────────────────
 function optimize(id,fillMode){
   syncSheet(id);
@@ -421,10 +479,19 @@ function optimize(id,fillMode){
   if(usable.w<=0||usable.h<=0){showWarn(id,'Sheet too small after margin.');return;}
   const allEnabled=Object.entries(DIES).filter(([k])=>s.enabled[k]).map(([k,v])=>({key:k,...v}));
   if(!allEnabled.length){showWarn(id,'Enable at least one die type.');return;}
+
+  // Fill remaining space: keep existing zones locked, fill only leftover regions
+  if(fillMode&&s.zones&&s.zones.length){
+    const regs=remainingRegions(s.zones,sw,sh);
+    const newZones=fillRegions(regs,allEnabled);
+    s.zones=[...s.zones,...newZones];
+    s.sw_mm=sw;s.sh_mm=sh;
+    renderResults(s);
+    return;
+  }
+
   const mandatory=allEnabled.filter(d=>s.mins[d.key]>0);
-  // In fill mode with no minimums, treat all enabled as candidates from the start
   const hasMins=mandatory.length>0;
-  // "Calculate layout" with no minimums: run greedy fill so the sheet isn't blank
   const effectiveFill=fillMode||!hasMins;
   let bestZones=null,bestTotal=-1;
   for(const ord of (mandatory.length?perms(mandatory):[[]])){
@@ -653,33 +720,21 @@ async function exportAllPNG(){
 function exportCSV(){
   const ready=sheets.filter(s=>s.zones);
   if(!ready.length){alert('Calculate at least one layout first.');return;}
-  const rows=[];
-  rows.push(['Sheet','Lot #','Width (cm)','Height (cm)','Die','Elec/hit','Total Electrodes','Origin X (mm)','Origin Y (mm)','Sheet Total Electrodes','TP5 Total','TP50v1 Total','TP50v2 Total','CT25 Total','Area Used (%)']);
+  const rows=[['Sheet','Lot #','Width (cm)','Height (cm)','Total Electrodes','TP5','TP50v1','TP50v2','CT25','Area Used (%)']];
   ready.forEach(s=>{
     const total=s.zones.reduce((a,z)=>a+z.layout.count,0);
     const counts={};s.zones.forEach(z=>counts[z.die.name]=(counts[z.die.name]||0)+z.layout.count);
     const used=s.zones.reduce((a,z)=>a+z.layout.usedW*z.layout.usedH,0);
     const util=((used/(s.sw_mm*s.sh_mm))*100).toFixed(1);
-    s.zones.forEach((z,i)=>{
-      const l=z.layout;
-      rows.push([
-        s.name,s.lot||'',s.sw,s.sh,
-        z.die.name,l.subCols*l.subRows,l.count,
-        z.x.toFixed(2),z.y.toFixed(2),
-        i===0?total:'',i===0?(counts['TP5']||0):'',i===0?(counts['TP50v1']||0):'',
-        i===0?(counts['TP50v2']||0):'',i===0?(counts['CT25']||0):'',i===0?util:''
-      ]);
-    });
-    rows.push([]);
+    rows.push([s.name,s.lot||'',s.sw,s.sh,total,counts['TP5']||0,counts['TP50v1']||0,counts['TP50v2']||0,counts['CT25']||0,util]);
   });
   const csv=rows.map(r=>r.map(v=>{
     const s=String(v??'');
     return s.includes(',')||s.includes('"')||s.includes('\n')?`"${s.replace(/"/g,'""')}"`:s;
   }).join(',')).join('\n');
-  // Use data URL so it works from file:// without blob URL restrictions
   const dataURL='data:text/csv;charset=utf-8,'+encodeURIComponent(csv);
   const a=document.createElement('a');
-  a.href=dataURL; a.download='electrode_results.csv';
+  a.href=dataURL;a.download='electrode_results.csv';
   document.body.appendChild(a);a.click();setTimeout(()=>document.body.removeChild(a),200);
 }
 
