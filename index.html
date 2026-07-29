@@ -87,7 +87,7 @@ tr:last-child td{border-bottom:none}
 <body>
 <div class="app">
   <h1>Electrode Sheet Optimizer</h1>
-  <p class="subtitle">4 mm edge margin · 5 mm zone gap · no partial electrodes · dimensions in cm</p>
+  <p class="subtitle">4 mm edge margin · 8 mm zone gap · no partial electrodes · dimensions in cm</p>
   <div class="global-actions">
     <span class="global-label">Export all:</span>
     <button class="btn-exp" onclick="exportAllPNG()">All layouts as ZIP</button>
@@ -104,12 +104,12 @@ tr:last-child td{border-bottom:none}
   <div id="sheets-container"></div>
 </div>
 <script>
-const MARGIN=4,GAP=5;
+const MARGIN=4,GAP=8;
 const DIES={
-  tp5:   {name:'TP5',   cols:4,rows:5,eW:17.10,eH:17.10,pitchX:22.10, pitchY:22.10, color:'#378ADD',light:'#c8e3f7',dark:'#185FA5'},
+  tp5:   {name:'TP5',   cols:4,rows:5,eW:22.10,eH:22.10,pitchX:27.10, pitchY:27.10, color:'#378ADD',light:'#c8e3f7',dark:'#185FA5'},
   tp50v1:{name:'TP50v1',cols:1,rows:2,eW:70.47,eH:70.47,pitchX:70.47, pitchY:80.47, color:'#1D9E75',light:'#b8e8d6',dark:'#0F6E56'},
   tp50v2:{name:'TP50v2',cols:2,rows:2,eW:54.89,eH:98.17,pitchX:59.89, pitchY:103.17,color:'#D85A30',light:'#f7d4c4',dark:'#993C1D'},
-  ct25:  {name:'CT25',  cols:3,rows:2,eW:39.75,eH:39.75,pitchX:49.75, pitchY:49.75, color:'#7F77DD',light:'#d8d5f5',dark:'#534AB7'},
+  ct25:  {name:'CT25',  cols:3,rows:2,eW:49.75,eH:49.75,pitchX:59.75, pitchY:59.75, color:'#7F77DD',light:'#d8d5f5',dark:'#534AB7'},
 };
 Object.values(DIES).forEach(d=>{d.gridW=(d.cols-1)*d.pitchX+d.eW;d.gridH=(d.rows-1)*d.pitchY+d.eH;});
 const PRESETS={'A3':[42.0,29.7],'A4':[29.7,21.0],'A5':[21.0,14.85]};
