@@ -14,18 +14,18 @@ Open `electrode_optimizer.html` in any modern browser (Chrome, Firefox, Safari, 
 
 The tool has four dies configured with their electrode dimensions and grid geometry:
 
-| Die | Grid | Electrodes/stamp | Electrode size (mm) | Full grid footprint (mm) |
-|-----|------|-----------------|--------------------|-----------------------|
-| TP5 | 4×5 | 20 | 17.1 × 17.1 | 83.4 × 105.5 |
-| TP50v1 | 1×2 | 2 | 70.47 × 70.47 | 70.47 × 150.94 |
-| TP50v2 | 2×2 | 4 | 54.89 × 98.17 | 114.78 × 201.34 |
-| CT25 | 3×2 | 6 | 39.75 × 39.75 | 149.25 × 99.5 |
+| Die | Grid | Electrodes/stamp | Electrode size (mm) | Gap X / Y (mm) | Full grid footprint (mm) |
+|-----|------|-----------------|--------------------|-----------------|-----------------------|
+| TP5 | 4×5 | 20 | 22.1 × 22.1 | 5.0 / 5.0 | 103.4 × 130.5 |
+| TP50v1 | 1×2 | 2 | 70.47 × 70.47 | 0 / 10.0 | 70.47 × 150.94 |
+| TP50v2 | 2×2 | 4 | 54.89 × 98.17 | 5.0 / 5.0 | 114.78 × 201.34 |
+| CT25 | 3×2 | 6 | 49.75 × 49.75 | 10.0 / 10.0 | 169.25 × 109.5 |
 
-All dimensions are derived from the electrode grid geometry only — the outer die backer board dimensions are not used.
+All dimensions are derived from the electrode grid geometry only — the outer die backer board dimensions are not used. Pitch = electrode size + gap.
 
 Physical constraints applied automatically:
 - **4 mm edge margin** on all sides of the sheet
-- **5 mm gap** between die zones
+- **8 mm gap** between die zones
 - **No partial electrodes** — every electrode cut is complete
 - **Partial die grids allowed** — the die can be aligned so only part of the grid lands on material (e.g. 5 electrodes from a 4×5 die)
 - **Die rotation** — each stamp can be rotated 90° if it fits better
