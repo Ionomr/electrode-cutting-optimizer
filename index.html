@@ -87,7 +87,7 @@ tr:last-child td{border-bottom:none}
 <body>
 <div class="app">
   <h1>Electrode Sheet Optimizer</h1>
-  <p class="subtitle">4 mm edge margin · 8 mm zone gap · no partial electrodes · dimensions in cm</p>
+  <p class="subtitle">4 mm edge margin · 4.763 mm zone gap · no partial electrodes · dimensions in cm</p>
   <div class="global-actions">
     <span class="global-label">Export all:</span>
     <button class="btn-exp" onclick="exportAllPNG()">All layouts as ZIP</button>
@@ -104,11 +104,11 @@ tr:last-child td{border-bottom:none}
   <div id="sheets-container"></div>
 </div>
 <script>
-const MARGIN=4,GAP=8;
+const MARGIN=4,GAP=4.763; // GAP matches in-die cavity gap (3/16")
 const DIES={
-  tp5:   {name:'TP5',   cols:4,rows:5,eW:22.10,eH:22.10,pitchX:27.10, pitchY:27.10, color:'#378ADD',light:'#c8e3f7',dark:'#185FA5'},
-  tp50v1:{name:'TP50v1',cols:1,rows:2,eW:70.47,eH:70.47,pitchX:70.47, pitchY:80.47, color:'#1D9E75',light:'#b8e8d6',dark:'#0F6E56'},
-  tp50v2:{name:'TP50v2',cols:2,rows:2,eW:54.89,eH:98.17,pitchX:59.89, pitchY:103.17,color:'#D85A30',light:'#f7d4c4',dark:'#993C1D'},
+  tp5:   {name:'TP5',   cols:5,rows:2,eW:21.61,eH:21.61,pitchX:26.373,pitchY:26.373,color:'#378ADD',light:'#c8e3f7',dark:'#185FA5'},
+  tp50v1:{name:'TP50v1',cols:2,rows:1,eW:69.96,eH:69.96,pitchX:74.723,pitchY:74.723,color:'#1D9E75',light:'#b8e8d6',dark:'#0F6E56'},
+  tp50v2:{name:'TP50v2',cols:2,rows:2,eW:97.68,eH:54.39,pitchX:102.443,pitchY:59.153,color:'#D85A30',light:'#f7d4c4',dark:'#993C1D'},
   ct25:  {name:'CT25',  cols:3,rows:2,eW:49.75,eH:49.75,pitchX:59.75, pitchY:59.75, color:'#7F77DD',light:'#d8d5f5',dark:'#534AB7'},
 };
 Object.values(DIES).forEach(d=>{d.gridW=(d.cols-1)*d.pitchX+d.eW;d.gridH=(d.rows-1)*d.pitchY+d.eH;});
@@ -384,8 +384,12 @@ function tryPack(mandOrder,allEnabled,mins,usable,dir,fillMode){
     if(remaining>0)return null;
   }
 
-  // Greedy fill: one stamp at a time, each gets its own zone with GAP enforced
+  // Greedy fill: one stamp at a time, each gets its own zone with GAP enforced.
+  // Runs the same maximal-rects fill used by "Fill remaining space" and keeps
+  // whichever (guillotine or maximal-rects) yields more electrodes.
   if(fillMode){
+    const mandZones=zones.slice();
+    const zMax=fillBest(mandZones,usable.w+2*MARGIN,usable.h+2*MARGIN,allEnabled);
     let improved=true;
     while(improved){
       improved=false;
@@ -402,6 +406,7 @@ function tryPack(mandOrder,allEnabled,mins,usable,dir,fillMode){
         improved=true;
       }
     }
+    if(countOf(zMax)>countOf(zones)-countOf(mandZones))return[...mandZones,...zMax];
   }
   return zones;
 }
@@ -470,6 +475,204 @@ function fillRegions(regions,allEnabled){
   return zones;
 }
 
+// Maximal-rectangles free space: free regions may overlap, so a stamp can use
+// any open area regardless of how earlier zones split the sheet. Every placed
+// zone is expanded by GAP and subtracted from ALL free rects.
+function subtractRect(free,zx,zy,zx2,zy2){
+  const out=[];
+  for(const r of free){
+    const rx2=r.x+r.w, ry2=r.y+r.h;
+    if(zx2<=r.x||zx>=rx2||zy2<=r.y||zy>=ry2){out.push(r);continue;}
+    if(zx>r.x)  out.push({x:r.x,y:r.y,w:zx-r.x,h:r.h});
+    if(zx2<rx2) out.push({x:zx2,y:r.y,w:rx2-zx2,h:r.h});
+    if(zy>r.y)  out.push({x:r.x,y:r.y,w:r.w,h:zy-r.y});
+    if(zy2<ry2) out.push({x:r.x,y:zy2,w:r.w,h:ry2-zy2});
+  }
+  const f=out.filter(r=>r.w>4&&r.h>4), e=1e-6;
+  // drop rects fully contained in another (keep one copy of duplicates)
+  return f.filter((a,i)=>!f.some((b,j)=>j!==i&&b.x<=a.x+e&&b.y<=a.y+e&&b.x+b.w>=a.x+a.w-e&&b.y+b.h>=a.y+a.h-e&&(j<i||b.w*b.h>a.w*a.h)));
+}
+function blockZone(free,z,sw_mm,sh_mm){
+  return subtractRect(free,
+    Math.max(MARGIN,z.x-GAP),Math.max(MARGIN,z.y-GAP),
+    Math.min(sw_mm-MARGIN,z.x+z.layout.usedW+GAP),Math.min(sh_mm-MARGIN,z.y+z.layout.usedH+GAP));
+}
+// Greedy fill around locked zones: most electrodes per stamp, then top-left position.
+function fillMaxRects(existingZones,sw_mm,sh_mm,allEnabled){
+  let free=[{x:MARGIN,y:MARGIN,w:sw_mm-2*MARGIN,h:sh_mm-2*MARGIN}];
+  for(const z of existingZones)free=blockZone(free,z,sw_mm,sh_mm);
+  const zones=[];
+  while(true){
+    let best=null;
+    for(const die of allEnabled)for(const r of free){
+      const s=fitStamp(die,r.w,r.h,0);if(!s)continue;
+      if(!best||s.count>best.layout.count||
+         (s.count===best.layout.count&&(r.y<best.y-1e-6||(Math.abs(r.y-best.y)<1e-6&&r.x<best.x-1e-6))))
+        best={die,layout:s,x:r.x,y:r.y};
+    }
+    if(!best)break;
+    zones.push(best);
+    free=blockZone(free,best,sw_mm,sh_mm);
+  }
+  return zones;
+}
+const countOf=zs=>zs.reduce((a,z)=>a+z.layout.count,0);
+
+// Pack around locked zones using maximal-rects free space.
+// targets: [{die,n}] placed first with the same scoring as Calculate layout
+// (least overshoot → largest stamp → smallest area); then greedy fill.
+// tie: 'tl' = top-left region first, 'fit' = region with least leftover.
+// Returns new zones, or null if a target count cannot be met.
+function packAround(lockedZones,sw_mm,sh_mm,allEnabled,targets,tie){
+  let free=[{x:MARGIN,y:MARGIN,w:sw_mm-2*MARGIN,h:sh_mm-2*MARGIN}];
+  for(const z of lockedZones)free=blockZone(free,z,sw_mm,sh_mm);
+  const zones=[];
+  const better=(sc,r,s,best)=>{
+    if(!best||sc>best.sc+1e-9)return true;
+    if(sc<best.sc-1e-9)return false;
+    if(tie==='fit'){const a=Math.min(r.w-s.usedW,r.h-s.usedH),b=Math.min(best.r.w-best.s.usedW,best.r.h-best.s.usedH);if(Math.abs(a-b)>1e-6)return a<b;}
+    return r.y<best.r.y-1e-6||(Math.abs(r.y-best.r.y)<1e-6&&r.x<best.r.x-1e-6);
+  };
+  const place=b=>{const z={die:b.die,layout:{...b.s,count:b.cnt},x:b.r.x,y:b.r.y};zones.push(z);free=blockZone(free,z,sw_mm,sh_mm);};
+  for(const {die,n} of targets){
+    let remaining=n;
+    while(remaining>0){
+      const need=Math.min(remaining,die.cols*die.rows);
+      let best=null;
+      for(const r of free){
+        const s1=fitStamp(die,r.w,r.h,need);
+        if(s1){const sc=-(s1.count-need)*1e9+s1.count*1e6-s1.usedW*s1.usedH;if(better(sc,r,s1,best))best={die,s:s1,r,sc};continue;}
+        const s0=fitStamp(die,r.w,r.h,0);
+        if(s0){const sc=-1e15+s0.count*1e6-s0.usedW*s0.usedH;if(better(sc,r,s0,best))best={die,s:s0,r,sc};}
+      }
+      if(!best)return null;
+      best.cnt=Math.min(best.s.count,remaining);
+      place(best);remaining-=best.cnt;
+    }
+  }
+  while(true){
+    let best=null;
+    for(const die of allEnabled)for(const r of free){
+      const s=fitStamp(die,r.w,r.h,0);if(!s)continue;
+      if(better(s.count,r,s,best))best={die,s,r,sc:s.count};
+    }
+    if(!best)break;
+    best.cnt=best.s.count;place(best);
+  }
+  return zones;
+}
+
+// Best fill around locked zones: tries plain greedy, plus, for each die, the
+// largest count Calculate-style targeted placement can fit (binary search),
+// each with two tie-break rules. Keeps whichever adds the most electrodes.
+function fillBest(lockedZones,sw_mm,sh_mm,allEnabled){
+  let best=[];
+  const consider=z=>{if(z&&countOf(z)>countOf(best))best=z;};
+  for(const tie of ['tl','fit']){
+    consider(packAround(lockedZones,sw_mm,sh_mm,allEnabled,[],tie));
+    for(const die of allEnabled){
+      const cap=Math.floor((sw_mm*sh_mm)/(die.eW*die.eH));
+      let lo=0,hi=cap,loZones=null;
+      while(lo<hi){
+        const mid=(lo+hi+1)>>1;
+        const z=packAround(lockedZones,sw_mm,sh_mm,allEnabled,[{die,n:mid}],tie);
+        if(z){lo=mid;loZones=z;}else hi=mid-1;
+      }
+      consider(loZones);
+    }
+  }
+  return best;
+}
+
+// Re-run Calculate layout's own search with a higher count of one die on top
+// of the locked zones' counts. A result is accepted only if every locked zone
+// appears unchanged (same die, position and size); the extra zones are returned,
+// topped up with fillBest. Guarantees Fill is never worse than Calculate when
+// Calculate would keep the existing zones where they are.
+function replayCalc(locked,sw_mm,sh_mm,allEnabled,usable){
+  const base={};allEnabled.forEach(d=>base[d.key]=0);
+  for(const z of locked){if(base[z.die.key]===undefined)return null;base[z.die.key]+=z.layout.count;}
+  const same=(a,b)=>a.die.key===b.die.key&&Math.abs(a.x-b.x)<1e-6&&Math.abs(a.y-b.y)<1e-6&&
+    Math.abs(a.layout.usedW-b.layout.usedW)<1e-6&&Math.abs(a.layout.usedH-b.layout.usedH)<1e-6&&a.layout.count===b.layout.count;
+  const run=mins=>{
+    const mand=allEnabled.filter(d=>mins[d.key]>0);let out=null;
+    for(const ord of perms(mand))for(const dir of ['h','v']){
+      const z=tryPack(ord,allEnabled,mins,usable,dir,false);if(!z)continue;
+      const used=new Set();
+      const ok=locked.every(l=>{const i=z.findIndex((q,k)=>!used.has(k)&&same(l,q));if(i<0)return false;used.add(i);return true;});
+      const extra=z.filter((q,k)=>!used.has(k));
+      if(ok&&(!out||countOf(extra)>countOf(out)))out=extra;
+    }
+    return out;
+  };
+  let best=null;
+  for(const die of allEnabled){
+    // largest extra count Calculate can place at all, then step down until locked zones match
+    const cap=Math.floor((sw_mm*sh_mm)/(die.eW*die.eH));
+    const feasible=n=>(()=>{const m={...base};m[die.key]+=n;const mand=allEnabled.filter(d=>m[d.key]>0);
+      for(const ord of perms(mand))for(const dir of ['h','v'])if(tryPack(ord,allEnabled,m,usable,dir,false))return true;return false;})();
+    let lo=0,hi=cap;while(lo<hi){const mid=(lo+hi+1)>>1;if(feasible(mid))lo=mid;else hi=mid-1;}
+    for(let n=lo;n>0&&n>lo-40;n--){
+      const m={...base};m[die.key]+=n;const extra=run(m);
+      if(extra){const top=fillBest([...locked,...extra],sw_mm,sh_mm,allEnabled);const all=[...extra,...top];
+        if(!best||countOf(all)>countOf(best))best=all;break;}
+    }
+  }
+  return best;
+}
+
+// Fill around locked zones — the exact logic used by "Fill remaining space".
+function fillAround(locked,sw_mm,sh_mm,allEnabled,usable){
+  let z=fillBest(locked,sw_mm,sh_mm,allEnabled);
+  const rep=replayCalc(locked,sw_mm,sh_mm,allEnabled,usable);
+  if(rep&&countOf(rep)>countOf(z))z=rep;
+  return z;
+}
+
+// Calculate layout's guillotine search over all die orders and split directions.
+function calcPack(mins,allEnabled,usable,fill){
+  const mandatory=allEnabled.filter(d=>mins[d.key]>0);
+  let bestZones=null,bestTotal=-1;
+  for(const ord of (mandatory.length?perms(mandatory):[[]])){
+    for(const dir of ['h','v']){
+      const z=tryPack(ord,allEnabled,mins,usable,dir,fill);
+      if(z){const t=countOf(z);if(t>bestTotal){bestTotal=t;bestZones=z;}}
+    }
+  }
+  return bestZones;
+}
+
+// Fallback when the guillotine search can't meet the minimums: place every
+// other die's minimum with Calculate layout, then place die d around them
+// using the Fill logic, keeping only d's stamps and trimming the last stamp to
+// a smaller sub-grid so exactly mins[d] electrodes are cut. This guarantees
+// that any count reachable via "Calculate → Fill remaining space" can also be
+// requested directly as a minimum.
+function calcFallback(mins,allEnabled,usable,sw_mm,sh_mm,fill){
+  let best=null;
+  for(const d of allEnabled.filter(x=>mins[x.key]>0)){
+    const rest={...mins,[d.key]:0};
+    const locked=Object.values(rest).some(v=>v>0)?calcPack(rest,allEnabled,usable,false):[];
+    if(!locked)continue;
+    const cands=[fillAround(locked,sw_mm,sh_mm,allEnabled,usable),fillBest(locked,sw_mm,sh_mm,[d])];
+    for(const c of cands){
+      const dz=c.filter(z=>z.die.key===d.key);
+      if(countOf(dz)<mins[d.key])continue;
+      const out=[];let left=mins[d.key];
+      for(const z of dz){
+        if(left<=0)break;
+        if(z.layout.count<=left){out.push(z);left-=z.layout.count;continue;}
+        const sub=fitStamp(d,z.layout.usedW,z.layout.usedH,left);   // fits inside the same footprint
+        out.push({die:z.die,layout:{...sub,count:left},x:z.x,y:z.y});left=0;
+      }
+      let res=[...locked,...out];
+      if(fill)res=[...res,...fillAround(res,sw_mm,sh_mm,allEnabled,usable)];
+      if(!best||countOf(res)>countOf(best))best=res;
+    }
+  }
+  return best;
+}
+
 // ── Optimize ──────────────────────────────────────────────────────────────────
 function optimize(id,fillMode){
   syncSheet(id);
@@ -482,8 +685,10 @@ function optimize(id,fillMode){
 
   // Fill remaining space: keep existing zones locked, fill only leftover regions
   if(fillMode&&s.zones&&s.zones.length){
-    const regs=remainingRegions(s.zones,sw,sh);
-    const newZones=fillRegions(regs,allEnabled);
+    // Maximal-rects enforces GAP against every placed zone. (The old
+    // remainingRegions/fillRegions path could place stamps < GAP apart across
+    // adjacent free regions, so it is no longer used here.)
+    const newZones=fillAround(s.zones,sw,sh,allEnabled,usable);
     s.zones=[...s.zones,...newZones];
     s.sw_mm=sw;s.sh_mm=sh;
     renderResults(s);
@@ -493,12 +698,10 @@ function optimize(id,fillMode){
   const mandatory=allEnabled.filter(d=>s.mins[d.key]>0);
   const hasMins=mandatory.length>0;
   const effectiveFill=fillMode||!hasMins;
-  let bestZones=null,bestTotal=-1;
-  for(const ord of (mandatory.length?perms(mandatory):[[]])){
-    for(const dir of ['h','v']){
-      const z=tryPack(ord,allEnabled,s.mins,usable,dir,effectiveFill);
-      if(z){const t=z.reduce((a,x)=>a+x.layout.count,0);if(t>bestTotal){bestTotal=t;bestZones=z;}}
-    }
+  let bestZones=calcPack(s.mins,allEnabled,usable,effectiveFill);
+  if(hasMins&&(!bestZones||effectiveFill)){
+    const fb=calcFallback(s.mins,allEnabled,usable,sw,sh,effectiveFill);
+    if(fb&&(!bestZones||countOf(fb)>countOf(bestZones)))bestZones=fb;
   }
   if(!bestZones||!bestZones.length){
     const hint=minSheetHint(allEnabled,s.mins);

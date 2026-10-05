@@ -6,7 +6,7 @@ A browser-based tool for calculating how many electrodes can be cut from a sheet
 
 ## Getting started
 
-Open `electrode_optimizer.html` in any modern browser (Chrome, Firefox, Safari, Edge). No internet connection is required for core functionality. The ZIP export requires an internet connection to load the JSZip library.
+Open `index.html` in any modern browser (Chrome, Firefox, Safari, Edge). No internet connection is required for core functionality. The ZIP export requires an internet connection to load the JSZip library.
 
 ---
 
@@ -16,18 +16,26 @@ The tool has four dies configured with their electrode dimensions and grid geome
 
 | Die | Grid | Electrodes/stamp | Electrode size (mm) | Gap X / Y (mm) | Full grid footprint (mm) |
 |-----|------|-----------------|--------------------|-----------------|-----------------------|
-| TP5 | 4×5 | 20 | 22.1 × 22.1 | 5.0 / 5.0 | 103.4 × 130.5 |
-| TP50v1 | 1×2 | 2 | 70.47 × 70.47 | 0 / 10.0 | 70.47 × 150.94 |
-| TP50v2 | 2×2 | 4 | 54.89 × 98.17 | 5.0 / 5.0 | 114.78 × 201.34 |
+| TP5 | 5×2 | 10 | 21.61 × 21.61 | 4.763 / 4.763 | 127.10 × 47.98 |
+| TP50v1 | 2×1 | 2 | 69.96 × 69.96 | 4.763 / – | 144.68 × 69.96 |
+| TP50v2 | 2×2 | 4 | 97.68 × 54.39 | 4.763 / 4.763 | 200.12 × 113.54 |
 | CT25 | 3×2 | 6 | 49.75 × 49.75 | 10.0 / 10.0 | 169.25 × 109.5 |
+
+Grid is given as columns × rows. TP5, TP50v1 and TP50v2 dimensions are from the Sept 2026 Paragon Steel Rule Die multi-cavity drawings:
+
+| Die | Drawing | Rev |
+|-----|---------|-----|
+| TP5 | RD-WE-TP5-ELEC-20-2186A | 2.0 |
+| TP50v1 | RD-WE-TP50-ELV1-ELEC-20-2142C | 3.1 |
+| TP50v2 | RD-WE-TP50-V2-ELEC-20-2209 | 3.1 |
 
 All dimensions are derived from the electrode grid geometry only — the outer die backer board dimensions are not used. Pitch = electrode size + gap.
 
 Physical constraints applied automatically:
 - **4 mm edge margin** on all sides of the sheet
-- **8 mm gap** between die zones
+- **4.763 mm gap** between die zones (matches the 4.763 mm cavity gap inside the dies)
 - **No partial electrodes** — every electrode cut is complete
-- **Partial die grids allowed** — the die can be aligned so only part of the grid lands on material (e.g. 5 electrodes from a 4×5 die)
+- **Partial die grids allowed** — the die can be aligned so only part of the grid lands on material (e.g. 5 electrodes from the 5×2 TP5 die)
 - **Die rotation** — each stamp can be rotated 90° if it fits better
 
 ---
@@ -58,13 +66,14 @@ Places the exact number of electrodes you specify — no more. For each enabled 
 
 1. Places the mandatory electrodes first, using the fewest and most physically natural die stamps (largest sub-grid that satisfies the count)
 2. If a minimum can't be satisfied in a single region, it splits the placement across multiple regions and carries the remainder forward
-3. Stops once all minimums are met — remaining space is left empty
+3. If that search can't meet a minimum, it places the other dies' minimums first, then fits the remaining die into all open space around them (the same search **Fill remaining space** uses) and trims the last stamp to a smaller sub-grid so exactly the requested count is cut. Any count you can reach with Calculate → Fill can therefore also be entered directly as a minimum
+4. Stops once all minimums are met — remaining space is left empty
 
 If no minimums are set, it runs a full greedy fill and shows the maximum possible yield.
 
 ### Fill remaining space
 
-Takes the current layout exactly as-is and fills any leftover regions with the best-fitting stamps from all enabled dies. Existing zones are never moved or changed. Use this to add bonus electrodes after specifying your required counts.
+Takes the current layout exactly as-is and fills the leftover space with stamps from all enabled dies. Existing zones are never moved or changed. It searches every open area around the existing zones (not just fixed strips), tries several placement strategies including Calculate layout's own search, and keeps whichever adds the most electrodes. The 4.763 mm gap is enforced against every zone on the sheet. Use this to add bonus electrodes after specifying your required counts.
 
 **Tip:** For the best combined layout when using multiple die types, set minimums for all die types together and use **Calculate layout** — this lets the optimizer find an arrangement that accommodates all dies simultaneously, which produces better results than filling sequentially.
 
@@ -127,6 +136,6 @@ Custom domains are supported on both GitHub Pages and Netlify.
 
 ## Limitations
 
-- The optimizer uses a guillotine packing algorithm. This is fast and produces good results but is not guaranteed to find the global optimum for complex multi-die layouts.
-- Sequential fill (using "Fill remaining space" after "Calculate layout") may leave more waste than a joint optimization. For best results with multiple die types, set all minimums together and use **Calculate layout**.
+- The optimizer combines a guillotine packing search with a free-space (maximal-rectangles) search and keeps the better result. This is fast and produces good results but is not guaranteed to find the global optimum for complex multi-die layouts.
+- "Fill remaining space" never moves existing zones. It searches all open space around them (including Calculate layout's own search), so it is never worse than Calculate layout when Calculate would keep those zones in place. If Calculate would rearrange the existing dies to fit more, setting all minimums together and using **Calculate layout** can still give a higher total.
 - Very large electrode counts with many mandatory dies may be slow due to permutation testing across packing directions.
